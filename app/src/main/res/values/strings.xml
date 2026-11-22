@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Oralis</string>
+    <string name="channel_generation">Geração de áudio</string>
+    <string name="channel_generation_desc">Progresso da conversão de textos em áudio</string>
+    <string name="channel_download">Download do modelo de voz</string>
+    <string name="channel_download_desc">Progresso da instalação do Kokoro</string>
+    <string name="channel_done">Áudios concluídos</string>
+    <string name="channel_done_desc">Avisa quando um áudio fica pronto</string>
+</resources>
