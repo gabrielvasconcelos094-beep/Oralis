@@ -63,16 +63,21 @@ class EngineHolder(
 
     init {
         scope.launch {
-            runCatching {
-                val cached = json.decodeFromString(ListSerializer(CachedVoice.serializer()), voicesCache.readText())
-                _voices.value = cached.map { Voice(it.id, it.displayName, it.locale, it.sampleRateHz) }
-            }
+            loadCachedVoices()
             models.state.collect { s ->
                 if (s !is ModelState.Installed) {
                     mutex.withLock { releaseLocked() }
                     if (s is ModelState.NotInstalled) _voices.value = emptyList()
                 }
             }
+        }
+    }
+
+    /** Voices discovered on a previous run, so the UI can list them before the model loads. */
+    internal fun loadCachedVoices() {
+        runCatching {
+            val cached = json.decodeFromString(ListSerializer(CachedVoice.serializer()), voicesCache.readText())
+            _voices.value = cached.map { Voice(it.id, it.displayName, it.locale, it.sampleRateHz) }
         }
     }
 

@@ -36,9 +36,14 @@ class VoicePreviewPlayer(private val holder: EngineHolder, private val cacheDir:
     /** Suspends until playback ends; cancel the calling coroutine to stop. */
     suspend fun play(key: String, text: String, voice: Voice, rate: Float) {
         stop()
+        val cached = loadCached(voice.id, rate, text)
+        if (cached == null && holder.busy) {
+            _state.value = State.Error(key, "O motor de voz está gerando um áudio agora. As amostras voltam a funcionar quando a geração terminar.")
+            return
+        }
         try {
             _state.value = State.Preparing(key)
-            val samples = loadCached(voice.id, rate, text) ?: holder.use { engine ->
+            val samples = cached ?: holder.use { engine ->
                 engine.synthesize(text, voice.id, voice.locale, rate).samples
             }.also { store(voice.id, rate, text, it) }
             _state.value = State.Playing(key)

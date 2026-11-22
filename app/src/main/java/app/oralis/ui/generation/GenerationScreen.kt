@@ -53,7 +53,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun GenerationScreen(container: AppContainer, nav: NavController, audioId: String) {
-    val audio by container.database.audioDao().observe(audioId).collectAsStateWithLifecycle(null)
+    val audioFlow = remember(audioId) { container.database.audioDao().observe(audioId) }
+    val audio by audioFlow.collectAsStateWithLifecycle(null)
     val liveAll by container.generationRepository.live.collectAsStateWithLifecycle()
     val live = liveAll?.takeIf { it.audioId == audioId }
     val scope = rememberCoroutineScope()

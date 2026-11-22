@@ -1,7 +1,9 @@
 package app.oralis.ui.player
 
 import android.os.SystemClock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -69,8 +71,10 @@ fun PlayerScreen(container: AppContainer, nav: NavController, playId: String?) {
     val conn = container.playerConnection
     val state by conn.state.collectAsStateWithLifecycle()
     val timer by container.sleepTimer.state.collectAsStateWithLifecycle()
-    val audio by (state.audioId?.let { container.database.audioDao().observe(it) } ?: kotlinx.coroutines.flow.flowOf(null))
-        .collectAsStateWithLifecycle(null)
+    val audioFlow = remember(state.audioId) {
+        state.audioId?.let { container.database.audioDao().observe(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+    }
+    val audio by audioFlow.collectAsStateWithLifecycle(null)
     val context = LocalContext.current
     var showTimer by remember { mutableStateOf(false) }
     var scrubbing by remember { mutableStateOf<Float?>(null) }
@@ -116,15 +120,25 @@ fun PlayerScreen(container: AppContainer, nav: NavController, playId: String?) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             val duration = state.durationMs.coerceAtLeast(1)
             val shown = scrubbing ?: (state.positionMs.toFloat() / duration).coerceIn(0f, 1f)
+            val sliderColors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.onSurface,
+                activeTrackColor = MaterialTheme.colorScheme.tertiary,
+                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
+            )
             Slider(
                 value = shown,
                 onValueChange = { scrubbing = it },
                 onValueChangeFinished = { scrubbing?.let { conn.seekTo((it * duration).toLong()) }; scrubbing = null },
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.onSurface,
-                    activeTrackColor = MaterialTheme.colorScheme.onSurface,
-                    inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
-                ),
+                colors = sliderColors,
+                thumb = {
+                    Box(Modifier.size(16.dp).background(MaterialTheme.colorScheme.onSurface, CircleShape))
+                },
+                track = { st ->
+                    SliderDefaults.Track(
+                        sliderState = st, modifier = Modifier.height(3.dp), colors = sliderColors,
+                        thumbTrackGapSize = 0.dp, drawStopIndicator = null,
+                    )
+                },
                 modifier = Modifier.semantics { contentDescription = "Posição no áudio" },
             )
             Row(Modifier.fillMaxWidth()) {

@@ -63,7 +63,12 @@ fun OralisNavHost(
         onRouteConsumed()
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // Surface (not a plain Box) so every screen inherits the right content colour (dark theme).
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+    ) {
         NavHost(
             navController = nav,
             startDestination = Routes.HOME,

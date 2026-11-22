@@ -40,6 +40,9 @@ android {
 
     buildTypes {
         release {
+            // Signed with the debug key so the APK is installable for personal use; replace with a
+            // private release keystore before any distribution.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -78,6 +81,7 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -128,6 +132,12 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -158,6 +168,9 @@ val buildHostNative by tasks.registering(Exec::class) {
 
 tasks.withType<Test>().configureEach {
     dependsOn(buildHostNative)
+    maxHeapSize = "3g"
+    systemProperty("robolectric.graphicsMode", "NATIVE")
+    systemProperty("oralis.screenshotDir", rootProject.layout.projectDirectory.dir("docs/screenshots").asFile.absolutePath)
     systemProperty("java.library.path", hostNativeDir.get().asFile.absolutePath)
     systemProperty("oralis.testOutputDir", layout.buildDirectory.dir("test-output").get().asFile.absolutePath)
     // Optional: path to a real Kokoro .litertlm for host-side validation scripts.

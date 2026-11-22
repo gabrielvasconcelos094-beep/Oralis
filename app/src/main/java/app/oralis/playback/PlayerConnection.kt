@@ -113,8 +113,15 @@ class PlayerConnection(
         }
     }
 
-    /** Plays [audio], resuming from its saved position unless it was finished. */
-    suspend fun play(audio: AudioEntity) = withContext(Dispatchers.Main) {
+    /**
+     * Plays [audio], resuming from its saved position unless it was finished. Runs on the
+     * connection's application scope, so navigating away from the calling screen never cancels it.
+     */
+    fun play(audio: AudioEntity) {
+        scope.launch(Dispatchers.Main) { runCatching { playInternal(audio) } }
+    }
+
+    private suspend fun playInternal(audio: AudioEntity) = withContext(Dispatchers.Main) {
         val path = audio.filePath ?: return@withContext
         if (!File(path).isFile) return@withContext
         val c = controller()

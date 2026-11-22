@@ -27,6 +27,20 @@ class MainActivity : ComponentActivity() {
         container.playerConnection.attach()
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = Settings())
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val dark = when (settings.theme) {
+                app.oralis.data.settings.ThemeMode.SYSTEM -> systemDark
+                app.oralis.data.settings.ThemeMode.LIGHT -> false
+                app.oralis.data.settings.ThemeMode.DARK -> true
+            }
+            androidx.compose.runtime.DisposableEffect(dark) {
+                // System bar icons follow the app theme, not only the system setting.
+                val style = androidx.activity.SystemBarStyle.auto(
+                    android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
+                ) { dark }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose {}
+            }
             OralisTheme(settings.theme) {
                 OralisNavHost(
                     container = container,

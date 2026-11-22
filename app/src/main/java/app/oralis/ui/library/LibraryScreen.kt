@@ -83,7 +83,8 @@ enum class SortMode(val label: String) { DATE("Mais recentes"), TITLE("Título")
 @Composable
 fun LibraryScreen(container: AppContainer, nav: NavController) {
     val dao = container.database.audioDao()
-    val all by dao.observeAll().collectAsStateWithLifecycle(emptyList())
+    val allFlow = remember { dao.observeAll() }
+    val all by allFlow.collectAsStateWithLifecycle(emptyList())
     val player by container.playerConnection.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

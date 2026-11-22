@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +60,8 @@ import kotlinx.coroutines.launch
 fun HomeScreen(container: AppContainer, nav: NavController) {
     val modelState by container.modelRepository.state.collectAsStateWithLifecycle()
     val settings by container.settings.settings.collectAsStateWithLifecycle(Settings())
-    val audios by container.database.audioDao().observeAll().collectAsStateWithLifecycle(emptyList())
+    val audiosFlow = remember { container.database.audioDao().observeAll() }
+    val audios by audiosFlow.collectAsStateWithLifecycle(emptyList())
     val live by container.generationRepository.live.collectAsStateWithLifecycle()
     val player by container.playerConnection.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
