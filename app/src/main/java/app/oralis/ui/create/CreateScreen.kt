@@ -189,6 +189,10 @@ fun CreateScreen(container: AppContainer, nav: NavController, sharedText: String
                     )
                     if (vm.text.text.isNotEmpty()) QuietButton("Limpar", onClick = { vm.setText("") })
                 }
+                if (est >= 15 * 60_000L) {
+                    VSpace(8)
+                    app.oralis.ui.components.BatteryHint()
+                }
             }
 
             // ---- Language ----

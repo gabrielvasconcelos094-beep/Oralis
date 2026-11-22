@@ -116,6 +116,8 @@ fun GenerationScreen(container: AppContainer, nav: NavController, audioId: Strin
                     )
                 }
                 VSpace(24)
+                app.oralis.ui.components.BatteryHint()
+                VSpace(16)
                 Text(
                     "Você pode sair desta tela ou bloquear o aparelho: a geração continua em segundo plano e cada trecho concluído fica salvo.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
