@@ -26,8 +26,8 @@ class AppContainer(app: Application) {
     val settings = SettingsRepository(app)
     val modelRepository = ModelRepository(app, scope)
     val engineHolder = EngineHolder(app, modelRepository, settings, scope)
-    val previewPlayer = VoicePreviewPlayer(engineHolder, File(app.cacheDir, "previews"))
     val generationRepository = GenerationRepository(app, database.audioDao())
+    val previewPlayer = VoicePreviewPlayer(engineHolder, File(app.cacheDir, "previews")) { generationRepository.live.value != null }
     val sleepTimer = SleepTimer()
     val playerConnection = PlayerConnection(app, database.audioDao(), settings, scope)
     val exportManager = ExportManager(app, database.audioDao())

@@ -242,6 +242,12 @@ fun CreateScreen(container: AppContainer, nav: NavController, sharedText: String
             (preview as? VoicePreviewPlayer.State.Error)?.let {
                 Text(it.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
+            (preview as? VoicePreviewPlayer.State.Preparing)?.takeIf { it.loadingModel }?.let {
+                Text(
+                    "Carregando o modelo de voz… a primeira amostra leva alguns segundos; as seguintes são imediatas.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // ---- Preset ----
             SectionLabel("Estilo de leitura")

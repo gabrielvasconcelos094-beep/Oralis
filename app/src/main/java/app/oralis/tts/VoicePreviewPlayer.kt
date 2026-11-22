@@ -1,28 +1,36 @@
 package app.oralis.tts
 
 import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.util.Log
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.io.RandomAccessFile
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /**
- * Generates short voice samples locally with Kokoro and plays them with AudioTrack. Samples are
- * cached (float PCM) per voice + rate + text, so listening again is instant.
+ * Generates short voice samples locally with Kokoro and plays them.
+ *
+ * Samples are written once as 16-bit WAV files in the cache (per voice + rate + text) and played
+ * with MediaPlayer: a streaming player with no buffer-size limits, unlike a static AudioTrack
+ * holding the whole float buffer, which some devices refuse for multi-second samples.
  */
-class VoicePreviewPlayer(private val holder: EngineHolder, private val cacheDir: File) {
+class VoicePreviewPlayer(
+    private val holder: EngineHolder,
+    private val cacheDir: File,
+    /** True while a generation owns the engine (it can hold it for a long time). */
+    private val isGenerating: () -> Boolean,
+) {
 
     sealed interface State {
         data object Idle : State
-        data class Preparing(val key: String) : State
+        data class Preparing(val key: String, val loadingModel: Boolean) : State
         data class Playing(val key: String) : State
         data class Error(val key: String, val message: String) : State
     }
@@ -31,99 +39,108 @@ class VoicePreviewPlayer(private val holder: EngineHolder, private val cacheDir:
     val state: StateFlow<State> = _state.asStateFlow()
 
     @Volatile
-    private var track: AudioTrack? = null
+    private var player: MediaPlayer? = null
 
     /** Suspends until playback ends; cancel the calling coroutine to stop. */
     suspend fun play(key: String, text: String, voice: Voice, rate: Float) {
         stop()
-        val cached = loadCached(voice.id, rate, text)
-        if (cached == null && holder.busy) {
-            _state.value = State.Error(key, "O motor de voz está gerando um áudio agora. As amostras voltam a funcionar quando a geração terminar.")
-            return
-        }
+        val file = cacheFile(voice.id, rate, text)
         try {
-            _state.value = State.Preparing(key)
-            val samples = cached ?: holder.use { engine ->
-                engine.synthesize(text, voice.id, voice.locale, rate).samples
-            }.also { store(voice.id, rate, text, it) }
+            if (!file.isFile) {
+                if (isGenerating()) {
+                    _state.value = State.Error(
+                        key, "O motor de voz está gerando um áudio agora. As amostras voltam a funcionar quando a geração terminar.",
+                    )
+                    return
+                }
+                _state.value = State.Preparing(key, loadingModel = holder.state.value !is EngineState.Ready)
+                val samples = holder.use(rate) { engine ->
+                    engine.synthesize(text, voice.id, voice.locale, rate).samples
+                }
+                withContext(Dispatchers.IO) { writeWav(file, samples, KokoroEngine.SAMPLE_RATE) }
+            }
             _state.value = State.Playing(key)
-            playBlocking(samples, KokoroEngine.SAMPLE_RATE)
+            playFile(file)
             _state.value = State.Idle
         } catch (e: CancellationException) {
             stop()
             _state.value = State.Idle
             throw e
         } catch (e: SpeechEngineException) {
+            Log.e(TAG, "Preview synthesis failed", e)
             _state.value = State.Error(key, ErrorMessages.engine(e))
         } catch (e: Exception) {
-            _state.value = State.Error(key, "Não foi possível reproduzir a amostra.")
+            Log.e(TAG, "Preview playback failed", e)
+            file.delete()
+            _state.value = State.Error(key, "Não foi possível reproduzir a amostra (${e.javaClass.simpleName}).")
         }
     }
 
     fun stop() {
-        track?.let { runCatching { it.pause(); it.flush(); it.stop() } }
+        player?.let { p -> runCatching { if (p.isPlaying) p.stop() } }
     }
 
-    private suspend fun playBlocking(samples: FloatArray, rate: Int) = withContext(Dispatchers.IO) {
-        if (samples.isEmpty()) return@withContext
-        val t = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .setSampleRate(rate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build(),
-            )
-            .setBufferSizeInBytes(samples.size * 4)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-        track = t
+    private suspend fun playFile(file: File) = withContext(Dispatchers.Main) {
+        val mp = MediaPlayer()
+        player = mp
         try {
-            if (t.state != AudioTrack.STATE_INITIALIZED) throw IllegalStateException("AudioTrack not initialized")
-            t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-            t.play()
-            val durationMs = samples.size * 1000L / rate
-            var waited = 0L
-            while (waited < durationMs + 150 && t.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                delay(50)
-                waited += 50
+            suspendCancellableCoroutine { cont ->
+                mp.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                mp.setDataSource(file.absolutePath)
+                mp.setOnCompletionListener { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+                mp.setOnErrorListener { _, what, extra ->
+                    if (cont.isActive) cont.resumeWith(Result.failure(IllegalStateException("MediaPlayer error $what/$extra")))
+                    true
+                }
+                mp.setOnPreparedListener { it.start() }
+                mp.prepareAsync()
+                cont.invokeOnCancellation { runCatching { mp.stop() } }
             }
         } finally {
-            track = null
-            runCatching { t.stop() }
-            t.release()
+            player = null
+            mp.release()
         }
     }
 
     private fun cacheFile(voiceId: String, rate: Float, text: String): File {
         val h = text.hashCode().toUInt().toString(16)
-        return File(cacheDir, "preview_${voiceId}_${(rate * 100).toInt()}_$h.f32")
-    }
-
-    private fun loadCached(voiceId: String, rate: Float, text: String): FloatArray? {
-        val f = cacheFile(voiceId, rate, text)
-        if (!f.isFile) return null
-        val bytes = f.readBytes()
-        val fb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
-        return FloatArray(fb.remaining()).also { fb.get(it) }
-    }
-
-    private fun store(voiceId: String, rate: Float, text: String, samples: FloatArray) {
-        runCatching {
-            cacheDir.mkdirs()
-            val bb = ByteBuffer.allocate(samples.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-            bb.asFloatBuffer().put(samples)
-            cacheFile(voiceId, rate, text).writeBytes(bb.array())
-        }
+        return File(cacheDir, "preview_${voiceId}_${(rate * 100).roundToInt()}_$h.wav")
     }
 
     companion object {
+        private const val TAG = "OralisPreview"
+
+        /** Writes mono 16-bit PCM WAV atomically. */
+        fun writeWav(target: File, samples: FloatArray, sampleRate: Int) {
+            target.parentFile?.mkdirs()
+            val tmp = File(target.parentFile, target.name + ".tmp")
+            val dataBytes = samples.size * 2
+            RandomAccessFile(tmp, "rw").use { raf ->
+                raf.setLength(0)
+                val header = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                header.put("RIFF".toByteArray()).putInt(36 + dataBytes).put("WAVE".toByteArray())
+                header.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1)
+                header.putInt(sampleRate).putInt(sampleRate * 2).putShort(2).putShort(16)
+                header.put("data".toByteArray()).putInt(dataBytes)
+                raf.write(header.array())
+                val buf = java.nio.ByteBuffer.allocate(8192 * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                var i = 0
+                while (i < samples.size) {
+                    buf.clear()
+                    val n = minOf(8192, samples.size - i)
+                    for (k in 0 until n) buf.putShort((samples[i + k] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort())
+                    raf.write(buf.array(), 0, n * 2)
+                    i += n
+                }
+            }
+            if (!tmp.renameTo(target)) throw java.io.IOException("Cannot write preview")
+        }
+
         fun sampleText(locale: String): String = when {
             locale.startsWith("pt") -> "Olá. Esta é a minha voz no Oralis. Posso ler aulas, ensaios e histórias para você, com calma e clareza."
             locale.startsWith("en") -> "Hello. This is my voice in Oralis. I can read lessons, essays and stories for you, calmly and clearly."

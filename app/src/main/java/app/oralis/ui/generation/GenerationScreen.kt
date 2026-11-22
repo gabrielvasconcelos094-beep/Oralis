@@ -57,6 +57,7 @@ fun GenerationScreen(container: AppContainer, nav: NavController, audioId: Strin
     val audio by audioFlow.collectAsStateWithLifecycle(null)
     val liveAll by container.generationRepository.live.collectAsStateWithLifecycle()
     val live = liveAll?.takeIf { it.audioId == audioId }
+    val engine by container.engineHolder.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var confirmCancel by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -99,6 +100,14 @@ fun GenerationScreen(container: AppContainer, nav: NavController, audioId: Strin
                 Stat("Tempo decorrido", a.generationStartedAt?.let { formatClock(now - it) } ?: "—")
                 eta(live)?.let { Stat("Tempo restante estimado", "≈ ${formatDuration(it)}") }
                 if (live.audioMsSynthesized > 0) Stat("Áudio gerado nesta sessão", formatDuration(live.audioMsSynthesized))
+                live.synthStartedAtElapsed?.let { start ->
+                    val wall = SystemClock.elapsedRealtime() - start
+                    if (live.audioMsSynthesized > 0 && wall > 5_000) {
+                        val speed = live.audioMsSynthesized.toDouble() / wall
+                        Stat("Velocidade", "%.1f× o tempo real".format(app.oralis.ui.components.PtBr, speed))
+                    }
+                }
+                (engine as? app.oralis.tts.EngineState.Ready)?.let { Stat("Acelerador", if (it.delegate == "GPU") "GPU" else "CPU") }
                 if (live.thermalPause) {
                     VSpace(12)
                     Text(

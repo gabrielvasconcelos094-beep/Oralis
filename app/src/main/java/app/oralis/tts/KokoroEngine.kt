@@ -145,7 +145,12 @@ class KokoroEngine(
     companion object {
         private const val TAG = "OralisKokoro"
         const val SAMPLE_RATE = 24_000
-        /** Same value as Google's official MediaPipe TTS sample. */
-        const val TARGET_BUCKET = 64
+        /**
+         * Phoneme bucket length per acoustic-model inference; 0 = adaptive (runtime default).
+         * Measured with the real model (same text/voice): 0 → 98.6 s for 204 s of audio;
+         * 64 (value used by Google's sample) → 139.9 s for 212 s, i.e. ~30% slower and with extra
+         * mid-sentence breaks; 32 → 2.4× slower.
+         */
+        const val TARGET_BUCKET = 0
     }
 }

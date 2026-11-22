@@ -82,11 +82,11 @@ class EngineHolder(
     }
 
     /** Runs [block] with exclusive access to a loaded engine. */
-    suspend fun <T> use(block: suspend (KokoroEngine) -> T): T = mutex.withLock {
+    suspend fun <T> use(rate: Float = 1f, block: suspend (KokoroEngine) -> T): T = mutex.withLock {
         idleJob?.cancel()
         busy = true
         try {
-            val e = obtainLocked()
+            val e = obtainLocked(rate)
             block(e)
         } finally {
             busy = false
@@ -99,7 +99,7 @@ class EngineHolder(
 
     suspend fun release() = mutex.withLock { releaseLocked() }
 
-    private suspend fun obtainLocked(): KokoroEngine {
+    private suspend fun obtainLocked(rate: Float): KokoroEngine {
         val installed = models.state.first { it !is ModelState.Checking && it !is ModelState.Verifying }
         if (installed !is ModelState.Installed) {
             throw SpeechEngineException(SpeechEngineException.Kind.MODEL_MISSING, "Model not installed")
@@ -117,7 +117,7 @@ class EngineHolder(
             cacheDir = File(context.cacheDir, "litert").apply { mkdirs() },
         )
         try {
-            e.load(1f)
+            e.load(rate) // load directly at the requested rate (rate is engine-level)
             val v = e.voices()
             if (v.isEmpty()) throw SpeechEngineException(SpeechEngineException.Kind.MODEL_INCOMPATIBLE, "Model reported no voices")
             _voices.value = v

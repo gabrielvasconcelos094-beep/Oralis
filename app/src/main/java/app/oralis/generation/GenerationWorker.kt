@@ -68,7 +68,7 @@ class GenerationWorker(context: Context, params: WorkerParameters) : CoroutineWo
             notify(entity.title, GenerationPhase.LOADING_MODEL, 0, 0, 0f, force = true)
             repo.publish { it?.copy(phase = GenerationPhase.LOADING_MODEL) }
 
-            val result = container.engineHolder.use { engine ->
+            val result = container.engineHolder.use(spec.speakingRate) { engine ->
                 GenerationPipeline(engine).run(
                     spec = spec,
                     text = text,
