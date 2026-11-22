@@ -106,6 +106,9 @@ class RealKokoroPipelineTest {
         fun stop() { engine?.close() }
     }
 
+    @org.junit.Before
+    fun requireRealKokoro() = assumeTrue("real Kokoro not configured (ORALIS_MODEL_PATH / ORALIS_PYTHON)", engine != null)
+
     private fun kokoro(): HostKokoro {
         assumeTrue("real Kokoro not configured", engine != null)
         return engine!!.also { it.calls.clear(); it.failAfter = Int.MAX_VALUE }
