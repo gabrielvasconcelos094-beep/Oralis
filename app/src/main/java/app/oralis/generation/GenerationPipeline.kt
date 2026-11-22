@@ -94,7 +94,8 @@ class GenerationPipeline(
         text: String,
         workDir: File,
         output: File,
-        onProgress: (GenerationProgress) -> Unit,
+        beforeSegment: suspend () -> Unit = {},
+        onProgress: suspend (GenerationProgress) -> Unit,
     ): GenerationResult {
         onProgress(GenerationProgress(GenerationPhase.PROCESSING_TEXT))
         val plan = loadOrCreatePlan(spec, text, workDir)
@@ -112,6 +113,7 @@ class GenerationPipeline(
         for (seg in plan.segments) {
             currentCoroutineContext().ensureActive()
             if (store.isComplete(seg.index)) continue
+            beforeSegment()
             val samples = if (seg.speechText.isEmpty()) {
                 FloatArray(0)
             } else {
